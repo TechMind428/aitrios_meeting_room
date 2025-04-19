@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AITRIOS マルチデバイス人数モニター</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>AITRIOS マルチデバイス人数モニター</h1>
+            <div class="header-actions">
+                <button id="settings-btn" class="btn btn-primary" onclick="showCommonSettingsModal()">共通設定</button>
+            </div>
+        </header>
+        
+        <main>
+            <div class="devices-grid">
+                <!-- デバイスカードは動的に生成される -->
+            </div>
+        </main>
+        
+        <footer>
+            <div id="status-message">システム起動中...</div>
+        </footer>
+    </div>
+    
+    <!-- 共通設定モーダル -->
+    <div id="common-settings-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>共通設定</h2>
+                <span class="close" onclick="closeAllModals()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="settings-section">
+                    <h3>API認証設定</h3>
+                    <div class="form-group">
+                        <label for="client-id">クライアントID:</label>
+                        <input type="text" id="client-id" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="client-secret">シークレット:</label>
+                        <input type="password" id="client-secret" class="form-control">
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>空き時間判定設定</h3>
+                    <div class="form-group">
+                        <label for="vacant-time">空き判定時間:</label>
+                        <div class="slider-container">
+                            <input type="range" id="vacant-time-slider" class="slider" min="1" max="30" value="5">
+                            <span id="vacant-time-value">5</span>分
+                        </div>
+                        <div class="input-group">
+                            <label for="vacant-time-input">直接入力:</label>
+                            <input type="number" id="vacant-time-input" class="form-control-sm" min="1" max="30" value="5">
+                            <span>分 (1〜30分)</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="actions">
+                    <button id="test-connection-btn" class="btn btn-secondary" onclick="testApiConnection()">接続テスト&設定保存</button>
+                </div>
+                
+                <div id="connection-result" class="connection-result"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- デバイス設定モーダル -->
+    <div id="device-settings-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>デバイス設定 - <span id="device-settings-title">-</span></h2>
+                <span class="close" onclick="closeAllModals()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="device-index">
+                
+                <div class="form-group">
+                    <label for="display-name">表示名:</label>
+                    <input type="text" id="display-name" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label for="device-id-input">デバイスID:</label>
+                    <input type="text" id="device-id-input" class="form-control" 
+                           placeholder="例: Aid-80070001-0000-2000-9002-000000000a53">
+                </div>
+                
+                <div class="form-group">
+                    <label>背景画像:</label>
+                    <div class="image-actions">
+                        <button id="fetch-image-btn" class="btn btn-secondary" onclick="fetchDeviceImage()">背景画像取得</button>
+                        <span>または</span>
+                        <label for="upload-image" class="btn btn-primary">画像をアップロード</label>
+                        <input type="file" id="upload-image" accept="image/jpeg,image/png" style="display:none" onchange="uploadDeviceImage(this.files[0])">
+                    </div>
+                    <div id="image-preview-container" class="image-preview-container">
+                        <img id="image-preview" src="" alt="プレビューなし">
+                        <span id="image-name">画像なし</span>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <button id="command-params-btn" class="btn btn-secondary" onclick="openCommandParamsModal()">コマンドパラメーター設定</button>
+                </div>
+                
+                <div class="actions">
+                    <button id="save-device-settings-btn" class="btn btn-primary" onclick="saveDeviceSettings()">保存</button>
+                    <button id="cancel-device-settings-btn" class="btn btn-outline" onclick="closeAllModals()">キャンセル</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- コマンドパラメーター設定モーダル -->
+    <div id="command-params-modal" class="modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2>コマンドパラメーター設定 - <span id="command-params-title">-</span></h2>
+                <span class="close" onclick="closeAllModals()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="command-params-device-id">
+                
+                <div class="settings-section">
+                    <h3>アップロード設定</h3>
+                    <div class="form-group">
+                        <label for="param-mode">Mode:</label>
+                        <select id="param-mode" class="form-control">
+                            <option value="0">入力画像のみ (0)</option>
+                            <option value="1">入力画像と推論結果 (1)</option>
+                            <option value="2" selected>推論結果のみ (2)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>画像アップロード設定</h3>
+                    <div class="form-group">
+                        <label for="param-upload-method">UploadMethod:</label>
+                        <select id="param-upload-method" class="form-control">
+                            <option value="HTTPStorage" selected>HTTPStorage</option>
+                            <option value="BlobStorage">BlobStorage</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="param-storage-name">StorageName:</label>
+                        <input type="text" id="param-storage-name" class="form-control" 
+                               value="http://162.133.128.166:8080">
+                    </div>
+                    <div class="form-group">
+                        <label for="param-storage-sub-dir">StorageSubDirectoryPath:</label>
+                        <input type="text" id="param-storage-sub-dir" class="form-control" 
+                               value="/image/{device_id}">
+                    </div>
+                    <div class="form-group">
+                        <label for="param-file-format">FileFormat:</label>
+                        <select id="param-file-format" class="form-control">
+                            <option value="JPG" selected>JPG</option>
+                            <option value="BMP">BMP</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>推論結果アップロード設定</h3>
+                    <div class="form-group">
+                        <label for="param-upload-method-ir">UploadMethodIR:</label>
+                        <select id="param-upload-method-ir" class="form-control">
+                            <option value="HTTPStorage" selected>HTTPStorage</option>
+                            <option value="Mqtt">Mqtt</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="param-storage-name-ir">StorageNameIR:</label>
+                        <input type="text" id="param-storage-name-ir" class="form-control" 
+                               value="http://162.133.128.166:8080">
+                    </div>
+                    <div class="form-group">
+                        <label for="param-storage-sub-dir-ir">StorageSubDirectoryPathIR:</label>
+                        <input type="text" id="param-storage-sub-dir-ir" class="form-control" 
+                               value="/meta/{device_id}">
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>画像切り抜き設定</h3>
+                    <div class="form-row">
+                        <div class="form-group col-6">
+                            <label for="param-crop-h-offset">CropHOffset:</label>
+                            <input type="number" id="param-crop-h-offset" class="form-control" 
+                                   min="0" max="4055" value="0">
+                        </div>
+                        <div class="form-group col-6">
+                            <label for="param-crop-v-offset">CropVOffset:</label>
+                            <input type="number" id="param-crop-v-offset" class="form-control" 
+                                   min="0" max="3039" value="0">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-6">
+                            <label for="param-crop-h-size">CropHSize:</label>
+                            <input type="number" id="param-crop-h-size" class="form-control" 
+                                   min="0" max="4056" value="4056">
+                        </div>
+                        <div class="form-group col-6">
+                            <label for="param-crop-v-size">CropVSize:</label>
+                            <input type="number" id="param-crop-v-size" class="form-control" 
+                                   min="0" max="3040" value="3040">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>アップロードパラメーター</h3>
+                    <div class="form-row">
+                        <div class="form-group col-6">
+                            <label for="param-num-images">NumberOfImages:</label>
+                            <input type="number" id="param-num-images" class="form-control" 
+                                   min="0" max="10000" value="0">
+                            <small class="text-muted">0 = 無制限</small>
+                        </div>
+                        <div class="form-group col-6">
+                            <label for="param-upload-interval">UploadInterval:</label>
+                            <input type="number" id="param-upload-interval" class="form-control" 
+                                   min="1" max="2592000" value="60">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="param-num-inferences">NumberOfInferencesPerMessage:</label>
+                        <input type="number" id="param-num-inferences" class="form-control" 
+                               min="1" max="100" value="1">
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>PPLパラメーター</h3>
+                    <div id="ppl-details" class="ppl-details">
+                        <div class="form-row">
+                            <div class="form-group col-6">
+                                <label for="param-max-detections">max_detections:</label>
+                                <input type="number" id="param-max-detections" class="form-control" 
+                                       min="1" max="100" value="1">
+                            </div>
+                            <div class="form-group col-6">
+                                <label for="param-threshold">threshold:</label>
+                                <input type="number" id="param-threshold" class="form-control" 
+                                       min="0.01" max="0.99" step="0.01" value="0.3">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-6">
+                                <label for="param-input-width">input_width:</label>
+                                <input type="number" id="param-input-width" class="form-control" 
+                                       min="1" value="320">
+                            </div>
+                            <div class="form-group col-6">
+                                <label for="param-input-height">input_height:</label>
+                                <input type="number" id="param-input-height" class="form-control" 
+                                       min="1" value="320">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="actions">
+                    <button id="apply-params-btn" class="btn btn-primary" onclick="applyCommandParameters()">デバイスに適用</button>
+                    <button id="cancel-params-btn" class="btn btn-outline" onclick="closeAllModals()">キャンセル</button>
+                </div>
+                
+                <div id="params-result" class="connection-result"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- トースト通知 -->
+    <div id="toast" class="toast"></div>
+    
+    <!-- スクリプト -->
+    <script>
+        // グローバル関数として定義して確実に使えるようにする
+        function showCommonSettingsModal() {
+            console.log('Opening common settings modal');
+            document.getElementById('common-settings-modal').style.display = 'block';
+            
+            // 接続結果をリセット
+            const connectionResult = document.getElementById('connection-result');
+            if (connectionResult) {
+                connectionResult.style.display = 'none';
+                connectionResult.className = 'connection-result';
+            }
+            
+            // 設定の読み込み
+            if (typeof loadSettings === 'function') {
+                loadSettings();
+            } else {
+                console.warn('loadSettings function not defined yet');
+                // JavaScriptが読み込まれるまで少し待ってから再試行
+                setTimeout(() => {
+                    if (typeof loadSettings === 'function') {
+                        loadSettings();
+                    }
+                }, 100);
+            }
+        }
+        
+        function closeAllModals() {
+            console.log('Closing all modals');
+            const modals = document.querySelectorAll('.modal');
+            modals.forEach(modal => {
+                modal.style.display = 'none';
+            });
+        }
+        
+        function openDeviceSettingsModal(index) {
+            console.log(`Opening device settings modal for index ${index}`);
+            closeAllModals();
+            
+            // デバイス設定モーダルを表示
+            const modal = document.getElementById('device-settings-modal');
+            if (modal) {
+                // デバイスインデックスを設定
+                const indexInput = document.getElementById('device-index');
+                if (indexInput) indexInput.value = index;
+                
+                // タイトルを更新
+                const titleSpan = document.getElementById('device-settings-title');
+                if (titleSpan) titleSpan.textContent = `デバイス ${index + 1}`;
+                
+                // モーダルを表示
+                modal.style.display = 'block';
+                
+                // 設定値を読み込み - 少し遅延させてDOM要素が確実に表示された状態で実行
+                setTimeout(() => {
+                    if (typeof loadDeviceSettings === 'function') {
+                        loadDeviceSettings(index);
+                    } else {
+                        console.error('loadDeviceSettings function not defined');
+                        // JavaScriptが読み込まれるまでさらに待つ
+                        setTimeout(() => {
+                            if (typeof loadDeviceSettings === 'function') {
+                                loadDeviceSettings(index);
+                            } else {
+                                showToast('設定読み込み関数が見つかりません', 'error');
+                            }
+                        }, 200);
+                    }
+                }, 100);
+            } else {
+                console.error('Device settings modal not found');
+            }
+        }
+        
+        function openCommandParamsModal() {
+            console.log('Opening command params modal');
+            // デバイスインデックスを取得
+            const index = document.getElementById('device-index').value;
+            
+            // モーダルを表示
+            const modal = document.getElementById('command-params-modal');
+            if (modal) {
+                const titleEl = document.getElementById('command-params-title');
+                const deviceInput = document.getElementById('command-params-device-id');
+                
+                // 設定データを取得
+                fetch('/api/settings')
+                    .then(response => response.json())
+                    .then(settings => {
+                        const devices = settings.devices || [];
+                        const deviceData = devices[index] || {};
+                        
+                        // デバイスIDが設定されていない場合
+                        if (!deviceData.device_id) {
+                            showToast('デバイスIDが設定されていません', 'error');
+                            return;
+                        }
+                        
+                        // タイトルとデバイスIDを設定
+                        if (titleEl) titleEl.textContent = deviceData.display_name || `デバイス ${parseInt(index) + 1}`;
+                        if (deviceInput) deviceInput.value = deviceData.device_id;
+                        
+                        modal.style.display = 'block';
+                        
+                        // コマンドパラメーターを取得
+                        setTimeout(() => {
+                            if (typeof loadCommandParameters === 'function') {
+                                loadCommandParameters(deviceData.device_id);
+                            } else {
+                                console.warn('loadCommandParameters function not defined yet');
+                            }
+                        }, 100);
+                    })
+                    .catch(error => {
+                        console.error('Error loading device data:', error);
+                        showToast('デバイス情報の読み込みに失敗しました', 'error');
+                    });
+            }
+        }
+        
+        // 画像アップロード処理
+        function uploadDeviceImage(file) {
+            if (!file) return;
+            
+            console.log('Uploading device image:', file.name);
+            
+            // デバイスインデックスを取得
+            const indexInput = document.getElementById('device-index');
+            if (!indexInput) {
+                console.error('Device index input not found');
+                return;
+            }
+            
+            const index = parseInt(indexInput.value);
+            
+            // フォームデータを作成
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // 画像をアップロード
+            fetch(`/api/settings/device/${index}/background`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    
+                    // 画像プレビューを更新
+                    const imagePreview = document.getElementById('image-preview');
+                    const imageName = document.getElementById('image-name');
+                    
+                    if (imagePreview && imageName && data.filename) {
+                        const imagePath = data.filename.startsWith('/') ? 
+                            data.filename : `/static/${data.filename}`;
+                        
+                        imagePreview.src = imagePath;
+                        imageName.textContent = data.filename.split('/').pop() || '画像なし';
+                    }
+                } else {
+                    showToast(data.message || 'アップロードに失敗しました', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error uploading background image:', error);
+                showToast('画像のアップロード中にエラーが発生しました', 'error');
+            });
+        }
+        
+        // 基本的なトースト表示関数（初期ロード時用）
+        function showToast(message, type) {
+            const toastEl = document.getElementById('toast');
+            if (!toastEl) return;
+            
+            toastEl.textContent = message;
+            toastEl.className = 'toast';
+            if (type) toastEl.classList.add(type);
+            toastEl.classList.add('show');
+            
+            setTimeout(() => {
+                toastEl.classList.remove('show');
+            }, 3000);
+        }
+    </script>
+    <script src="/static/js/settings.js"></script>
+    <script src="/static/js/device_ui.js"></script>
+    <script src="/static/js/command_params.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
