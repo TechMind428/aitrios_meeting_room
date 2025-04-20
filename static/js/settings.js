@@ -168,40 +168,81 @@ function loadCommandParameters(deviceId) {
         applyParamsBtn.textContent = '読み込み中...';
     }
     
+    // キャンセルボタンは常に有効に
+    const cancelParamsBtn = document.getElementById('cancel-params-btn');
+    if (cancelParamsBtn) {
+        cancelParamsBtn.disabled = false;
+    }
+    
     // API呼び出し
     fetch(`/api/command_parameters/${deviceId}`)
         .then(response => response.json())
         .then(data => {
             console.log('Command parameters loaded:', data);
             
-            // ボタンを有効化
-            if (applyParamsBtn) {
-                applyParamsBtn.disabled = false;
-                applyParamsBtn.textContent = 'デバイスに適用';
-            }
-            
+            // バインド状態を確認
             if (data.success) {
-                // パラメーターをフォームに設定
-                setCommandParametersToForm(data.parameters);
-                
-                // 結果表示をクリア
-                const paramsResult = document.getElementById('params-result');
-                if (paramsResult) {
-                    paramsResult.style.display = 'none';
-                    paramsResult.className = 'connection-result';
+                // パラメーターが存在するかチェック (bound_file が存在するか)
+                if (data.bound_file) {
+                    // バインドされている場合は編集可能にする
+                    if (applyParamsBtn) {
+                        applyParamsBtn.disabled = false;
+                        applyParamsBtn.textContent = 'デバイスに適用';
+                    }
+                    
+                    // パラメーターをフォームに設定
+                    setCommandParametersToForm(data.parameters);
+                    
+                    // バインドファイル名を表示（参考表示用）
+                    const boundFileInfo = document.getElementById('bound-file-info');
+                    if (boundFileInfo) {
+                        boundFileInfo.textContent = `バインドされているファイル: ${data.bound_file}`;
+                        boundFileInfo.style.display = 'block';
+                    }
+                    
+                    // 結果表示をクリア
+                    const paramsResult = document.getElementById('params-result');
+                    if (paramsResult) {
+                        paramsResult.style.display = 'none';
+                        paramsResult.className = 'connection-result';
+                    }
+                } else {
+                    // バインドされていない場合はエラーメッセージを表示
+                    if (applyParamsBtn) {
+                        applyParamsBtn.disabled = true;
+                    }
+                    
+                    const paramsResult = document.getElementById('params-result');
+                    if (paramsResult) {
+                        paramsResult.textContent = 'コマンドパラメーターがバインドされていません。コンソールでバインドしてください。';
+                        paramsResult.className = 'connection-result error';
+                        paramsResult.style.display = 'block';
+                    }
+                    
+                    showToast('コマンドパラメーターがバインドされていません', 'error');
                 }
             } else {
+                if (applyParamsBtn) {
+                    applyParamsBtn.disabled = true;
+                }
+                
                 showToast(data.message || 'パラメーター取得に失敗しました', 'error');
+                
+                const paramsResult = document.getElementById('params-result');
+                if (paramsResult) {
+                    paramsResult.textContent = data.message || 'パラメーター取得に失敗しました';
+                    paramsResult.className = 'connection-result error';
+                    paramsResult.style.display = 'block';
+                }
             }
         })
         .catch(error => {
             console.error('Error fetching command parameters:', error);
             showToast('パラメーター取得中にエラーが発生しました', 'error');
             
-            // ボタンを有効化
+            // ボタンを無効化
             if (applyParamsBtn) {
-                applyParamsBtn.disabled = false;
-                applyParamsBtn.textContent = 'デバイスに適用';
+                applyParamsBtn.disabled = true;
             }
         });
 }
@@ -341,7 +382,7 @@ function getCommandParametersFromForm() {
                         "NumberOfImages": numImages,
                         "UploadInterval": uploadInterval,
                         "NumberOfInferencesPerMessage": numInferences,
-                        "MaxDetectionsPerFrame": maxDetections,
+                        // MaxDetectionsPerFrameを削除。この値はPPLParameterに含まれるmax_detectionsに統合
                         "PPLParameter": {
                             "header": {
                                 "id": "00",
@@ -813,6 +854,72 @@ function closeAllModals() {
     modals.forEach(modal => {
         modal.style.display = 'none';
     });
+}
+
+// Modeなどの値に応じてフィールドの表示/非表示を更新
+function updateFieldVisibility() {
+    const mode = parseInt(document.getElementById('param-mode').value);
+    
+    // 画像アップロード設定セクション
+    const imageUploadSection = document.querySelector('.settings-section:nth-of-type(2)');
+    if (imageUploadSection) {
+        // Mode 0か1のときのみ画像アップロード設定を表示
+        imageUploadSection.style.display = (mode === 0 || mode === 1) ? 'block' : 'none';
+    }
+    
+    // 推論結果アップロード設定セクション
+    const inferenceUploadSection = document.querySelector('.settings-section:nth-of-type(3)');
+    if (inferenceUploadSection) {
+        // Mode 1か2のときのみ推論結果アップロード設定を表示
+        inferenceUploadSection.style.display = (mode === 1 || mode === 2) ? 'block' : 'none';
+    }
+}
+
+// コマンドパラメーターモーダルを開く
+function openCommandParamsModal() {
+    console.log('Opening command params modal');
+    // デバイスインデックスを取得
+    const index = document.getElementById('device-index').value;
+    
+    // モーダルを表示
+    const modal = document.getElementById('command-params-modal');
+    if (modal) {
+        const titleEl = document.getElementById('command-params-title');
+        const deviceInput = document.getElementById('command-params-device-id');
+        
+        // 設定データを取得
+        fetch('/api/settings')
+            .then(response => response.json())
+            .then(settings => {
+                const devices = settings.devices || [];
+                const deviceData = devices[index] || {};
+                
+                // デバイスIDが設定されていない場合
+                if (!deviceData.device_id) {
+                    showToast('デバイスIDが設定されていません', 'error');
+                    return;
+                }
+                
+                // タイトルとデバイスIDを設定
+                if (titleEl) titleEl.textContent = deviceData.display_name || `デバイス ${parseInt(index) + 1}`;
+                if (deviceInput) deviceInput.value = deviceData.device_id;
+                
+                modal.style.display = 'block';
+                
+                // コマンドパラメーターを取得
+                setTimeout(() => {
+                    if (typeof loadCommandParameters === 'function') {
+                        loadCommandParameters(deviceData.device_id);
+                    } else {
+                        console.warn('loadCommandParameters function not defined yet');
+                    }
+                }, 100);
+            })
+            .catch(error => {
+                console.error('Error loading device data:', error);
+                showToast('デバイス情報の読み込みに失敗しました', 'error');
+            });
+    }
 }
 
 // 初期化確認

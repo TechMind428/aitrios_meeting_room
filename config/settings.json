@@ -5,13 +5,13 @@
   "devices": [
     {
       "display_name": "\u4f1a\u8b70\u5ba4\uff11",
-      "device_id": "Aid-80070001-0000-2000-9002-000000000a53",
-      "background_image": "images/device_0_20250413221642.jpg"
+      "device_id": "Aid-80070001-0000-2000-9002-000000000b62",
+      "background_image": "images/device_0_20250419220505.jpg"
     },
     {
       "display_name": "\u4f1a\u8b70\u5ba4\uff12",
-      "device_id": "Aid-80070001-0000-2000-9002-000000000b62",
-      "background_image": "images/device_1_20250413172004.jpg"
+      "device_id": "Aid-80070001-0000-2000-9002-000000000a53",
+      "background_image": "images/device_1_20250419220512.jpg"
     },
     {
       "display_name": "",

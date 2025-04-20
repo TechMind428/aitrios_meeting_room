@@ -14,6 +14,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Set, Tuple
+from dotenv import load_dotenv
 
 import aiofiles
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Form, Depends
@@ -22,6 +23,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
 import base64
+
+# .env ファイルを読み込む
+load_dotenv()
 
 # 自作モジュールのインポート
 from backend.device_manager import DeviceManager
@@ -50,16 +54,16 @@ class Config:
     SETTINGS_FILE = CONFIG_DIR / "settings.json"
     
     # AITRIOS設定デフォルト値
-    DEFAULT_CLIENT_ID = ""
-    DEFAULT_CLIENT_SECRET = ""
+    DEFAULT_CLIENT_ID = os.getenv("DEFAULT_CLIENT_ID", "")
+    DEFAULT_CLIENT_SECRET = os.getenv("DEFAULT_CLIENT_SECRET", "")
     
     # メタデータ処理設定
     MAX_QUEUE_SIZE = 100
     MAX_WS_CLIENTS = 10
-    WS_UPDATE_INTERVAL = 0.5  # WebSocketクライアント更新間隔（秒）
+    WS_UPDATE_INTERVAL = float(os.getenv("WS_UPDATE_INTERVAL", "0.5"))  # WebSocketクライアント更新間隔（秒）
     
     # 空き時間判定デフォルト値（分）
-    DEFAULT_VACANT_TIME_MINUTES = 5
+    DEFAULT_VACANT_TIME_MINUTES = int(os.getenv("DEFAULT_VACANT_TIME_MINUTES", "5"))
 
 
 # グローバルオブジェクト（非同期タスク間で共有）
@@ -562,24 +566,53 @@ async def get_command_parameters(device_id: str):
             # 推論が完全に停止するまで少し待機
             await asyncio.sleep(2)
         
-        # デバイスのコマンドパラメーターを取得
-        params = await command_param_manager.get_device_parameters(device_id)
-        
-        # 推論を再開
-        if inference_active:
-            logger.info(f"Restarting inference for device {device_id}")
-            await device_manager.start_inference(device_id)
-        
-        return {"success": True, "parameters": params}
-    except Exception as e:
-        logger.error(f"Error getting command parameters: {str(e)}")
-        # エラー発生時も推論を再開
         try:
+            # まず、デバイスがコマンドパラメーターファイルにバインドされているか確認
+            bound_file_name, bound_file_info = await command_param_manager.get_parameter_file_for_device(device_id)
+            
+            # バインドされているかどうかを確認
+            if not bound_file_info or "device_ids" not in bound_file_info or device_id not in bound_file_info.get("device_ids", []):
+                # バインドされていない場合
+                logger.warning(f"Device {device_id} is not bound to any parameter file")
+                
+                # 推論を再開
+                if inference_active:
+                    logger.info(f"Restarting inference for device {device_id}")
+                    await device_manager.start_inference(device_id)
+                
+                return {
+                    "success": True,
+                    "bound_file": None,
+                    "message": "デバイスにコマンドパラメーターがバインドされていません"
+                }
+            
+            # バインドされている場合はパラメーターを取得
+            logger.info(f"Device {device_id} is bound to parameter file: {bound_file_name}")
+            params = await command_param_manager.get_device_parameters(device_id)
+            
+            # 推論を再開
+            if inference_active:
+                logger.info(f"Restarting inference for device {device_id}")
+                await device_manager.start_inference(device_id)
+            
+            return {
+                "success": True,
+                "bound_file": bound_file_name,
+                "parameters": params
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting command parameter file: {str(e)}")
+            # エラー発生時も推論を再開
             if inference_active:
                 await device_manager.start_inference(device_id)
-        except:
-            pass
-        
+            
+            return {
+                "success": False,
+                "message": f"パラメーターファイルの取得に失敗しました: {str(e)}"
+            }
+    except Exception as e:
+        logger.error(f"Error getting command parameters: {str(e)}")
         return {"success": False, "message": f"エラーが発生しました: {str(e)}"}
 
 

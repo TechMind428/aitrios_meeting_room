@@ -8,6 +8,10 @@ AITRIOS マルチデバイス人数モニター - メインエントリーポイ
 import os
 import sys
 import uvicorn
+from dotenv import load_dotenv
+
+# .env ファイルを読み込む
+load_dotenv()
 
 # カレントディレクトリをパスに追加（importを正しく解決するため）
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -19,12 +23,13 @@ if __name__ == "__main__":
     os.makedirs("config", exist_ok=True)
     os.makedirs("static/images", exist_ok=True)
     
-    # サーバー起動（ワーカー数を最適化）
-    workers = min(os.cpu_count() or 1, 4)  # CPUコア数または4のうち小さい方
+    # 環境変数からポート番号を取得（デフォルトは8081に変更）
+    port = int(os.getenv("SERVER_PORT", "8080"))
+    host = os.getenv("SERVER_HOST", "0.0.0.0")
     
-    print(f"Starting AITRIOS Multi-Device People Monitor with {workers} workers on port 8080...")
+    print(f"Starting AITRIOS Multi-Device People Monitor on {host}:{port}...")
     uvicorn.run("backend.server:app", 
-                host="0.0.0.0", 
-                port=8080, 
-                workers=1,  # WebSocketのためシングルプロセスで実行
+                host=host, 
+                port=port, 
+                workers=1,     # WebSocketのためシングルプロセスで実行
                 reload=False)  # 本番環境ではreload=False

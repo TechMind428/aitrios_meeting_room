@@ -12,12 +12,13 @@ import logging
 import base64
 import aiohttp
 import asyncio
+import os
 from typing import Dict, List, Any, Tuple, Optional
 
 
-# AITRIOS APIの基本URL
-BASE_URL = "https://console.aitrios.sony-semicon.com/api/v1"
-PORTAL_URL = "https://auth.aitrios.sony-semicon.com/oauth2/default/v1/token"
+# AITRIOS APIの基本URLを環境変数から取得
+BASE_URL = os.getenv("AITRIOS_API_BASE_URL", "https://console.aitrios.sony-semicon.com/api/v1")
+PORTAL_URL = os.getenv("AITRIOS_PORTAL_URL", "https://auth.aitrios.sony-semicon.com/oauth2/default/v1/token")
 
 
 class AITRIOSClient:
@@ -357,20 +358,17 @@ class AITRIOSClient:
         }
         url = f"{BASE_URL}/command_parameter_files"
         
-        # APIの仕様に従ってJSONボディを構築
+        # CommandParamUpdate.pyと同じフォーマット
         data = {
             "file_name": file_name,
-            "contents": contents
+            "parameter": contents,  # parameterが正しいキー名
+            "comment": comment
         }
-        
-        # コメントが空でない場合のみ追加
-        if comment:
-            data["comment"] = comment
         
         self.logger.info(f"Registering new command parameter file: {file_name}")
         self.logger.info(f"Request URL: {url}")
         self.logger.info(f"Request data keys: {list(data.keys())}")
-        self.logger.info(f"Contents length: {len(contents)}")
+        self.logger.info(f"Parameter length: {len(contents)}")
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers, json=data) as response:
@@ -385,10 +383,123 @@ class AITRIOSClient:
                 else:
                     self.logger.error(f"Failed to register command parameter file: {response.status} - {response_text}")
                     raise Exception(f"Failed to register command parameter file: {response.status} - {response_text}")
-
+###############
+    async def unbind_command_parameter_file(self, file_name: str, device_ids: List[str]) -> Dict[str, Any]:
+        """
+        デバイスからコマンドパラメーターファイルをアンバインド
+        CommandParamUpdate.pyに基づいて実装
+        
+        Args:
+            file_name: アンバインドするコマンドパラメーターファイル名
+            device_ids: アンバインド対象のデバイスIDリスト
+            
+        Returns:
+            Dict[str, Any]: API応答
+        """
+        if not device_ids:
+            self.logger.warning(f"No device IDs provided for unbinding from {file_name}")
+            return {"result": "SUCCESS", "message": "No devices to unbind"}
+            
+        token = await self.get_access_token()
+        
+        # CommandParamUpdate.pyと同様のエンドポイントとヘッダー使用
+        url = f"{BASE_URL}/devices/configuration/command_parameter_files/{file_name}"
+        
+        # フォームデータ形式を使用
+        form_data = []
+        for device_id in device_ids:
+            form_data.append(('device_ids[]', device_id))
+        
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+        
+        self.logger.info(f"Unbinding command parameter file {file_name} from devices: {device_ids}")
+        self.logger.info(f"Request URL: {url}")
+        self.logger.info(f"Request form data: {form_data}")
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                # DELETEメソッドでフォームデータを送信
+                async with session.delete(url, headers=headers, data=form_data) as response:
+                    response_text = await response.text()
+                    self.logger.info(f"Unbind response status: {response.status}, body: {response_text}")
+                    
+                    # 200または404なら成功 (404はファイルが存在しない場合)
+                    if response.status == 200 or response.status == 404:
+                        try:
+                            return json.loads(response_text)
+                        except:
+                            return {"result": "SUCCESS"}
+                    else:
+                        # エラーメッセージを記録するが例外は発生させない
+                        self.logger.error(f"Failed to unbind command parameter file: {response.status} - {response_text}")
+                        return {"result": "ERROR", "message": f"Unbind failed: {response_text}"}
+        except Exception as e:
+            self.logger.error(f"Exception in unbind_command_parameter_file: {str(e)}")
+            return {"result": "ERROR", "message": f"Exception: {str(e)}"}
+    
+    
+    async def bind_command_parameter_file(self, file_name: str, device_ids: List[str]) -> Dict[str, Any]:
+        """
+        コマンドパラメーターファイルをデバイスにバインド
+        CommandParamUpdate.pyに基づいて実装
+        
+        Args:
+            file_name: コマンドパラメーターファイル名
+            device_ids: バインド対象のデバイスIDリスト
+            
+        Returns:
+            Dict[str, Any]: API応答
+        """
+        if not device_ids:
+            self.logger.warning(f"No device IDs provided for binding to {file_name}")
+            return {"result": "SUCCESS", "message": "No devices to bind"}
+            
+        token = await self.get_access_token()
+        
+        # CommandParamUpdate.pyと同じエンドポイントとリクエスト形式
+        url = f"{BASE_URL}/devices/configuration/command_parameter_files/{file_name}"
+        
+        # フォームデータ形式を使用
+        form_data = []
+        for device_id in device_ids:
+            form_data.append(('device_ids[]', device_id))
+        
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+        
+        self.logger.info(f"Binding command parameter file {file_name} to devices: {device_ids}")
+        self.logger.info(f"Request URL: {url}")
+        self.logger.info(f"Request form data: {form_data}")
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                # PUTメソッドでフォームデータを送信
+                async with session.put(url, headers=headers, data=form_data) as response:
+                    response_text = await response.text()
+                    self.logger.info(f"Bind response status: {response.status}, body: {response_text}")
+                    
+                    if response.status == 200:
+                        try:
+                            return json.loads(response_text)
+                        except:
+                            return {"result": "SUCCESS"}
+                    else:
+                        self.logger.error(f"Failed to bind command parameter file: {response.status} - {response_text}")
+                        return {"result": "ERROR", "message": f"Bind failed: {response_text}"}
+        except Exception as e:
+            self.logger.error(f"Exception in bind_command_parameter_file: {str(e)}")
+            return {"result": "ERROR", "message": f"Exception: {str(e)}"}
+    
+    
     async def update_command_parameter_file(self, file_name: str, comment: str, contents: str) -> Dict[str, Any]:
         """
         既存のコマンドパラメーターファイルを更新
+        CommandParamUpdate.pyに基づいて実装
         
         Args:
             file_name: コマンドパラメーターファイル名
@@ -405,19 +516,16 @@ class AITRIOSClient:
         }
         url = f"{BASE_URL}/command_parameter_files/{file_name}"
         
-        # APIの仕様に従ってJSONボディを構築
+        # CommandParamUpdate.pyと同じリクエスト形式
         data = {
-            "contents": contents
+            "parameter": contents,  # parameterが正しいキー名
+            "comment": comment
         }
-        
-        # コメントが空でない場合のみ追加
-        if comment:
-            data["comment"] = comment
         
         self.logger.info(f"Updating command parameter file: {file_name}")
         self.logger.info(f"Request URL: {url}")
         self.logger.info(f"Request data keys: {list(data.keys())}")
-        self.logger.info(f"Contents length: {len(contents)}")
+        self.logger.info(f"Parameter length: {len(contents)}")
         
         async with aiohttp.ClientSession() as session:
             async with session.patch(url, headers=headers, json=data) as response:
@@ -431,103 +539,4 @@ class AITRIOSClient:
                         return {"result": "SUCCESS"}
                 else:
                     self.logger.error(f"Failed to update command parameter file: {response.status} - {response_text}")
-                    raise Exception(f"Failed to update command parameter file: {response.status} - {response_text}")
-
-    async def unbind_command_parameter_file(self, file_name: str, device_ids: List[str]) -> Dict[str, Any]:
-        """
-        デバイスからコマンドパラメーターファイルをアンバインド
-        
-        Args:
-            file_name: アンバインドするコマンドパラメーターファイル名
-            device_ids: アンバインド対象のデバイスIDリスト
-            
-        Returns:
-            Dict[str, Any]: API応答
-        """
-        if not device_ids:
-            self.logger.warning(f"No device IDs provided for unbinding from {file_name}")
-            return {"result": "SUCCESS", "message": "No devices to unbind"}
-            
-        token = await self.get_access_token()
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
-        url = f"{BASE_URL}/devices/configuration/command_parameter_files/{file_name}"
-        
-        # APIの仕様に従ってデバイスIDリストをJSONで送信
-        data = {
-            "device_ids": device_ids
-        }
-        
-        self.logger.info(f"Unbinding command parameter file {file_name} from devices: {device_ids}")
-        self.logger.info(f"Request URL: {url}")
-        self.logger.info(f"Request data: {json.dumps(data)}")
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.delete(url, headers=headers, json=data) as response:
-                    response_text = await response.text()
-                    self.logger.info(f"Unbind response status: {response.status}, body: {response_text}")
-                    
-                    if response.status == 200:
-                        try:
-                            return json.loads(response_text)
-                        except:
-                            return {"result": "SUCCESS"}
-                    else:
-                        # アンバインドエラーを詳細にログ出力
-                        self.logger.error(f"Failed to unbind command parameter file: {response.status} - {response_text}")
-                        raise Exception(f"Failed to unbind command parameter file: {response.status} - {response_text}")
-        except Exception as e:
-            self.logger.error(f"Exception in unbind_command_parameter_file: {str(e)}")
-            raise
-
-    async def bind_command_parameter_file(self, file_name: str, device_ids: List[str]) -> Dict[str, Any]:
-        """
-        コマンドパラメーターファイルをデバイスにバインド
-        
-        Args:
-            file_name: コマンドパラメーターファイル名
-            device_ids: バインド対象のデバイスIDリスト
-            
-        Returns:
-            Dict[str, Any]: API応答
-        """
-        if not device_ids:
-            self.logger.warning(f"No device IDs provided for binding to {file_name}")
-            return {"result": "SUCCESS", "message": "No devices to bind"}
-            
-        token = await self.get_access_token()
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
-        url = f"{BASE_URL}/devices/configuration/command_parameter_files/{file_name}"
-        
-        # APIの仕様に従ってデバイスIDリストをJSONで送信
-        data = {
-            "device_ids": device_ids
-        }
-        
-        self.logger.info(f"Binding command parameter file {file_name} to devices: {device_ids}")
-        self.logger.info(f"Request URL: {url}")
-        self.logger.info(f"Request data: {json.dumps(data)}")
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.put(url, headers=headers, json=data) as response:
-                    response_text = await response.text()
-                    self.logger.info(f"Bind response status: {response.status}, body: {response_text}")
-                    
-                    if response.status == 200:
-                        try:
-                            return json.loads(response_text)
-                        except:
-                            return {"result": "SUCCESS"}
-                    else:
-                        self.logger.error(f"Failed to bind command parameter file: {response.status} - {response_text}")
-                        raise Exception(f"Failed to bind command parameter file: {response.status} - {response_text}")
-        except Exception as e:
-            self.logger.error(f"Exception in bind_command_parameter_file: {str(e)}")
-            raise
+                    return {"result": "ERROR", "message": f"Update failed: {response_text}"}
