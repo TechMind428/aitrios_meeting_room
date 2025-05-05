@@ -383,7 +383,7 @@ class AITRIOSClient:
                 else:
                     self.logger.error(f"Failed to register command parameter file: {response.status} - {response_text}")
                     raise Exception(f"Failed to register command parameter file: {response.status} - {response_text}")
-###############
+
     async def unbind_command_parameter_file(self, file_name: str, device_ids: List[str]) -> Dict[str, Any]:
         """
         デバイスからコマンドパラメーターファイルをアンバインド
@@ -401,28 +401,28 @@ class AITRIOSClient:
             
         token = await self.get_access_token()
         
-        # URLは同じ
+        # 正しいエンドポイントとURLを使用
         url = f"{BASE_URL}/devices/configuration/command_parameter_files/{file_name}"
         
-        # device_idsリストをカンマ区切りの文字列に変換
+        # API仕様に基づいた正しいデータ形式（カンマ区切りの文字列）
         device_ids_str = ",".join(device_ids)
-        
-        # フォームデータ形式
-        form_data = {"device_ids": device_ids_str}
+        data = {
+            "device_ids": device_ids_str
+        }
         
         headers = {
             "Authorization": f"Bearer {token}",
-            "Content-Type": "application/x-www-form-urlencoded"
+            "Content-Type": "application/json"
         }
         
         self.logger.info(f"Unbinding command parameter file {file_name} from devices: {device_ids}")
         self.logger.info(f"Request URL: {url}")
-        self.logger.info(f"Request form data: {form_data}")
+        self.logger.info(f"Request data: {data}")
         
         try:
             async with aiohttp.ClientSession() as session:
-                # DELETEメソッドでフォームデータを送信
-                async with session.delete(url, headers=headers, data=form_data) as response:
+                # DELETEメソッドでJSONデータを送信
+                async with session.delete(url, headers=headers, json=data) as response:
                     response_text = await response.text()
                     self.logger.info(f"Unbind response status: {response.status}, body: {response_text}")
                     
@@ -458,14 +458,14 @@ class AITRIOSClient:
             
         token = await self.get_access_token()
         
-        # URLは同じ
+        # 正しいエンドポイントと形式
         url = f"{BASE_URL}/devices/configuration/command_parameter_files/{file_name}"
         
-        # device_idsリストをカンマ区切りの文字列に変換
+        # API仕様に基づいた正しいデータ形式（カンマ区切りの文字列）
         device_ids_str = ",".join(device_ids)
-        
-        # 直接JSONリテラル文字列を構築
-        json_str = '{"device_ids": "' + device_ids_str + '"}'
+        data = {
+            "device_ids": device_ids_str
+        }
         
         headers = {
             "Authorization": f"Bearer {token}",
@@ -474,12 +474,12 @@ class AITRIOSClient:
         
         self.logger.info(f"Binding command parameter file {file_name} to devices: {device_ids}")
         self.logger.info(f"Request URL: {url}")
-        self.logger.info(f"Request JSON: {json_str}")
+        self.logger.info(f"Request data: {data}")
         
         try:
             async with aiohttp.ClientSession() as session:
-                # PUTメソッドで直接JSONリテラル文字列を送信
-                async with session.put(url, headers=headers, data=json_str) as response:
+                # PUTメソッドでJSONデータを送信
+                async with session.put(url, headers=headers, json=data) as response:
                     response_text = await response.text()
                     self.logger.info(f"Bind response status: {response.status}, body: {response_text}")
                     
