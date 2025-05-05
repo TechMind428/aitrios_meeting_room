@@ -387,7 +387,6 @@ class AITRIOSClient:
     async def unbind_command_parameter_file(self, file_name: str, device_ids: List[str]) -> Dict[str, Any]:
         """
         デバイスからコマンドパラメーターファイルをアンバインド
-        CommandParamUpdate.pyに基づいて実装
         
         Args:
             file_name: アンバインドするコマンドパラメーターファイル名
@@ -402,13 +401,14 @@ class AITRIOSClient:
             
         token = await self.get_access_token()
         
-        # CommandParamUpdate.pyと同様のエンドポイントとヘッダー使用
+        # URLは同じ
         url = f"{BASE_URL}/devices/configuration/command_parameter_files/{file_name}"
         
-        # フォームデータ形式を使用
-        form_data = []
-        for device_id in device_ids:
-            form_data.append(('device_ids[]', device_id))
+        # device_idsリストをカンマ区切りの文字列に変換
+        device_ids_str = ",".join(device_ids)
+        
+        # フォームデータ形式
+        form_data = {"device_ids": device_ids_str}
         
         headers = {
             "Authorization": f"Bearer {token}",
@@ -444,7 +444,6 @@ class AITRIOSClient:
     async def bind_command_parameter_file(self, file_name: str, device_ids: List[str]) -> Dict[str, Any]:
         """
         コマンドパラメーターファイルをデバイスにバインド
-        CommandParamUpdate.pyに基づいて実装
         
         Args:
             file_name: コマンドパラメーターファイル名
@@ -459,27 +458,28 @@ class AITRIOSClient:
             
         token = await self.get_access_token()
         
-        # CommandParamUpdate.pyと同じエンドポイントとリクエスト形式
+        # URLは同じ
         url = f"{BASE_URL}/devices/configuration/command_parameter_files/{file_name}"
         
-        # フォームデータ形式を使用
-        form_data = []
-        for device_id in device_ids:
-            form_data.append(('device_ids[]', device_id))
+        # device_idsリストをカンマ区切りの文字列に変換
+        device_ids_str = ",".join(device_ids)
+        
+        # 直接JSONリテラル文字列を構築
+        json_str = '{"device_ids": "' + device_ids_str + '"}'
         
         headers = {
             "Authorization": f"Bearer {token}",
-            "Content-Type": "application/x-www-form-urlencoded"
+            "Content-Type": "application/json"
         }
         
         self.logger.info(f"Binding command parameter file {file_name} to devices: {device_ids}")
         self.logger.info(f"Request URL: {url}")
-        self.logger.info(f"Request form data: {form_data}")
+        self.logger.info(f"Request JSON: {json_str}")
         
         try:
             async with aiohttp.ClientSession() as session:
-                # PUTメソッドでフォームデータを送信
-                async with session.put(url, headers=headers, data=form_data) as response:
+                # PUTメソッドで直接JSONリテラル文字列を送信
+                async with session.put(url, headers=headers, data=json_str) as response:
                     response_text = await response.text()
                     self.logger.info(f"Bind response status: {response.status}, body: {response_text}")
                     
